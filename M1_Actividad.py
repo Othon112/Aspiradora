@@ -11,23 +11,21 @@ class VacuumAgent(Agent):
         self.movements = 0
     
     def step(self):
-        # Check if there is dirt in the current cell and clean it
         cell_contents = self.model.grid.get_cell_list_contents([self.pos])
         for obj in cell_contents:
             if isinstance(obj, DirtAgent):
                 self.model.grid.remove_agent(obj)
                 self.model.clean_cell(self.pos)
         
-        # Move randomly to a neighboring cell
         self.random_move()
     
     def random_move(self):
         possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         new_position = self.random.choice(possible_steps)
         
-        # Move to the new position without checking if the cell is empty
+        
         self.model.grid.move_agent(self, new_position)
-        self.movements += 
+        self.movements += 1
 
 class DirtAgent(Agent):
     def __init__(self, unique_id, model):
@@ -46,7 +44,7 @@ class VacuumModel(Model):
             self.grid.place_agent(agent, (1, 1))
             self.schedule.add(agent)
         
-        # Add dirt agents (representing dirty cells)
+        
         self.dirty_cells = set()
         num_dirty_cells = int(M * N * dirty_percentage)
         for i in range(num_dirty_cells):
@@ -77,12 +75,12 @@ def agent_portrayal(agent):
         portrayal["Layer"] = 0
     return portrayal
 
-# Parameters for the model
+
 M, N = 10, 10
 num_agents = 1
 dirty_percentage = 0.3
 
-# Set up the visualization
+
 grid = CanvasGrid(agent_portrayal, M, N, 500, 500)
 server = ModularServer(
     VacuumModel,
@@ -93,3 +91,4 @@ server = ModularServer(
 
 server.port = 8521
 server.launch()
+
