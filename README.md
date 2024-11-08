@@ -1,6 +1,6 @@
 # Simulación de Robot de Limpieza Reactivo
 
-Este repositorio contiene código para la simulación de movimientos de un agente y la implementación de los algoritmos de búsqueda BFS y DFS. A continuación se describen las instrucciones de uso.
+Este repositorio contiene código para la simulación de movimientos de una aspiradora y la implementación de los algoritmos de búsqueda BFS y DFS. A continuación se describen las instrucciones de uso.
 
 ## Archivos y Estructura
 
