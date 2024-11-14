@@ -4,6 +4,7 @@ from mesa.space import MultiGrid
 from mesa.visualization.modules import CanvasGrid
 from mesa.visualization.ModularVisualization import ModularServer
 import random
+import plotly.graph_objects as go
 
 # Clase del agente Vehículo
 class VehicleAgent(Agent):
@@ -15,7 +16,6 @@ class VehicleAgent(Agent):
         self.malicious = random.random() < 0.3  # Asigna un 30% de probabilidad de que el vehículo sea malicioso
 
     def step(self):
-        # Verificar si el vehículo ha llegado a la base
         if self.pos == self.model.base_location:
             self.model.vehicles_at_base += 1
             self.reappear()
@@ -79,13 +79,16 @@ class TrafficIntersectionModel(Model):
         self.running = True
         self.current_green = "north"
         self.base_location = (M // 2, N - 1)
-        self.vehicles_at_base = 0  # Contador de vehículos que llegan a la base
-        self.collisions = 0        # Contador de colisiones
+        self.vehicles_at_base = 0
+        self.collisions = 0
+        self.steps = []
+        self.vehicles_data = []
+        self.collisions_data = []
 
-        # Diccionario para almacenar los niveles de feromonas en cada celda
+        # Inicializar el diccionario de feromonas correctamente
         self.pheromones = {(x, y): 0 for x in range(M) for y in range(N)}
 
-        # Añadir semáforos en las cuatro direcciones
+        # Configurar semáforos
         light_positions = {
             "north": (M // 2, N // 2 - 1),
             "south": (M // 2, N // 2 + 1),
@@ -104,7 +107,7 @@ class TrafficIntersectionModel(Model):
         self.grid.place_agent(self.base, self.base_location)
         self.schedule.add(self.base)
 
-        # Añadir vehículos cerca de los semáforos
+        # Añadir vehículos
         directions = ["north", "east", "west"]
         for i in range(self.num_vehicles):
             direction = random.choice(directions)
@@ -117,7 +120,7 @@ class TrafficIntersectionModel(Model):
         self.update_traffic_lights()
         self.evaporate_pheromones()
         self.schedule.step()
-        self.report_statistics()
+        self.collect_data()
 
     def update_traffic_lights(self):
         for direction, light in self.traffic_lights.items():
@@ -131,8 +134,9 @@ class TrafficIntersectionModel(Model):
 
     def evaporate_pheromones(self):
         evaporation_rate = 0.05
-        for pos in self.pheromones:
-            self.pheromones[pos] = max(self.pheromones[pos] * (1 - evaporation_rate), 0)
+        if self.pheromones:
+            for pos in self.pheromones.keys():
+                self.pheromones[pos] = max(self.pheromones[pos] * (1 - evaporation_rate), 0)
 
     def get_near_light_spawn_location(self):
         directions = {
@@ -150,9 +154,24 @@ class TrafficIntersectionModel(Model):
             self.grid.place_agent(collision, pos)
             self.schedule.add(collision)
 
+    def collect_data(self):
+        self.steps.append(len(self.steps))
+        self.vehicles_data.append(self.vehicles_at_base)
+        self.collisions_data.append(self.collisions)
+
     def report_statistics(self):
         print(f"Vehículos en la base: {self.vehicles_at_base}")
         print(f"Colisiones: {self.collisions}")
+
+# Función para graficar los resultados
+def plot_results(steps, vehicles_data, collisions_data):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=steps, y=vehicles_data, mode='lines+markers', name='Vehículos en la Base'))
+    fig.add_trace(go.Scatter(x=steps, y=collisions_data, mode='lines+markers', name='Colisiones'))
+    fig.update_layout(title="Vehículos en la Base y Colisiones a lo Largo del Tiempo",
+                      xaxis_title="Paso de Tiempo",
+                      yaxis_title="Cantidad")
+    fig.show()
 
 # Configuración de visualización y simulación
 def agent_portrayal(agent):
@@ -188,4 +207,6 @@ if __name__ == "__main__":
     try:
         server.launch()
     except KeyboardInterrupt:
+        model = server.model
+        plot_results(model.steps, model.vehicles_data, model.collisions_data)
         print("\nSimulación detenida por el usuario.")
