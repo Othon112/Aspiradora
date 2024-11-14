@@ -18,7 +18,7 @@ server = ModularServer(
     VacuumModel,
     [grid, chart],
     "Vacuum Cleaning Model",
-    {"n_vacuums": 3, "n_trash": 10, "width": 10, "height": 10, "search_algorithm": 'bfs'}
+    {"n_vacuums": 1, "n_trash": 10, "width": 10, "height": 10, "search_algorithm": 'bfs'}
 )
 
 server.port = 8521

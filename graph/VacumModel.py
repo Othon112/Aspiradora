@@ -12,6 +12,7 @@ class TrashAgent(mesa.Agent):
     def __init__(self, unique_id, model):
         super().__init__(unique_id, model)
         self.cleaned = False  
+
 class VacuumAgent(mesa.Agent):
     """An agent representing a vacuum cleaner."""
 
@@ -21,6 +22,7 @@ class VacuumAgent(mesa.Agent):
         self.search_algorithm = search_algorithm 
         self.cleaned_count = 0
         self.steps_taken = 0  
+
     def bfs(self, start_pos):
         """Perform BFS to find the nearest uncleaned trash."""
         queue = deque([(start_pos, [])])
@@ -93,7 +95,7 @@ class VacuumAgent(mesa.Agent):
 class VacuumModel(mesa.Model):
     """A model with vacuum agents and trash."""
 
-    def __init__(self, n_vacuums=5, n_trash=20, width=10, height=10, seed=None, search_algorithm='bfs'):
+    def __init__(self, n_vacuums=1, n_trash=20, width=10, height=10, seed=None, search_algorithm='bfs'):
         super().__init__(seed=seed)
         self.grid = mesa.space.MultiGrid(width, height, True)
         self.schedule = mesa.time.RandomActivation(self)
@@ -113,7 +115,7 @@ class VacuumModel(mesa.Model):
             }
         )
 
-        # Create vacuum agents
+        # Create vacuum agent
         for i in range(n_vacuums):
             vacuum = VacuumAgent(i, self, search_algorithm)
             self.schedule.add(vacuum)
@@ -122,8 +124,8 @@ class VacuumModel(mesa.Model):
             self.grid.place_agent(vacuum, (x, y))
 
         # Create trash agents
-        for i in range(n_vacuums, n_vacuums + n_trash):
-            trash = TrashAgent(i, self)
+        for i in range(n_trash):
+            trash = TrashAgent(i + n_vacuums, self)
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)
             self.grid.place_agent(trash, (x, y))
@@ -157,20 +159,20 @@ server = ModularServer(
     VacuumModel,
     [grid],
     "Vacuum Cleaning Model",
-    {"n_vacuums": 3, "n_trash": 10, "width": 10, "height": 10, "search_algorithm": 'bfs'}
+    {"n_vacuums": 1, "n_trash": 10, "width": 10, "height": 10, "search_algorithm": 'bfs'}
 )
 
 
 if __name__ == "__main__":
-    # Run the model using BFS
-    model_bfs = VacuumModel(n_vacuums=3, n_trash=20, width=10, height=10, search_algorithm='bfs')
+    # Run the model using BFS with a single vacuum agent
+    model_bfs = VacuumModel(n_vacuums=1, n_trash=20, width=10, height=10, search_algorithm='bfs')
     model_bfs.run_model(step_count=50)
 
     # Retrieve and plot data for BFS
     data_bfs = model_bfs.datacollector.get_model_vars_dataframe()
 
-    # Run the model using DFS
-    model_dfs = VacuumModel(n_vacuums=3, n_trash=20, width=10, height=10, search_algorithm='dfs')
+    # Run the model using DFS with a single vacuum agent
+    model_dfs = VacuumModel(n_vacuums=1, n_trash=20, width=10, height=10, search_algorithm='dfs')
     model_dfs.run_model(step_count=50)
 
     # Retrieve and plot data for DFS
@@ -182,7 +184,7 @@ if __name__ == "__main__":
     plt.plot(data_dfs.index, data_dfs['CleanedTrash'], label='DFS')
     plt.xlabel('Step')
     plt.ylabel('Number of Cleaned Trash')
-    plt.title('Performance of Vacuum Agents Over Time')
+    plt.title('Performance of Single Vacuum Agent Over Time')
     plt.legend()
     plt.grid(True)
     plt.show()
