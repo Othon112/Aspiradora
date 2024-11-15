@@ -18,8 +18,20 @@ class CarAgent(Agent):
         self.direction = direction
         self.start_pos = start_pos
         self.happiness = 100  # Initial happiness (0-100 scale)
+        self.state = "happy"
 
     def step(self):
+        if self.happiness > 80:
+            self.state = "happy"
+        elif self.happiness < 50:
+            self.state = "angry"
+
+        # Behavior based on state
+        if self.state == "happy":
+            self.happiness += 0.2  # Gain happiness slightly
+        elif self.state == "angry":
+            self.happiness -= 0.5  # Lose happiness more rapidly
+
         # Determine the position one cell before the traffic light
         if self.direction == "horizontal":
             stop_pos = (self.model.traffic_light_positions[0][0] - 1, self.start_pos[1])
@@ -29,7 +41,8 @@ class CarAgent(Agent):
         # Stop at red light
         light_green = self.model.is_light_green(self.direction)
         if self.pos == stop_pos and not light_green:
-            self.happiness -= 1
+            self.happiness -= 1 if self.state == "happy" else 2
+            
             return  # Stop if the light is red for this direction
         
 
@@ -39,14 +52,13 @@ class CarAgent(Agent):
 
     def move_and_wrap(self):
         x, y = self.pos
-        step_size = 1
+        step_size = 1 if self.state == "happy" else 2  # Angry drivers move faster
         if self.direction == "horizontal":
             next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
             next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
-
         # Move to the next position
         self.model.grid.move_agent(self, next_pos)
 
@@ -262,7 +274,10 @@ def agent_portrayal(agent):
         portrayal["Color"] = "yellow"
         portrayal["Layer"] = 0
     elif isinstance(agent, CarAgent):
-        portrayal["Color"] = "blue"
+        if agent.state == "happy":
+            portrayal["Color"] = "blue"
+        elif agent.state == "angry":
+            portrayal["Color"] = "red"
         portrayal["Shape"] = "circle"
         portrayal["r"] = 0.5
         portrayal["Layer"] = 1
