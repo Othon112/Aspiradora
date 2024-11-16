@@ -1,8 +1,12 @@
-# Simulación de Robot de Limpieza Reactivo
+# Simulación de Robot de Limpieza Reactivo Y Evidencia 1
 
 Este repositorio contiene código para la simulación de movimientos de una aspiradora y la implementación de los algoritmos de búsqueda BFS y DFS. A continuación se describen las instrucciones de uso.
 
+Además incluye la simulación de tráfico entre agentes
+
 ## Archivos y Estructura
+
+-**Evidencia1.py**: Este archivo incluye la propuesta de solución del tráfico entre agentes
 
 - **M1\_reactivo.py**: Este archivo contiene la simulación de los movimientos aleatorios del agente. Para ejecutar la simulación con movimientos random, utiliza este archivo.
 
