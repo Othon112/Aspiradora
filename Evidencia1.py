@@ -3,6 +3,7 @@ from mesa.time import SimultaneousActivation
 from mesa.space import MultiGrid
 from mesa.visualization.modules import CanvasGrid
 from mesa.visualization.ModularVisualization import ModularServer
+from mesa.datacollection import DataCollector
 import random
 
 # Boundary agent class for visualizing grid boundaries
@@ -16,8 +17,21 @@ class CarAgent(Agent):
         super().__init__(unique_id, model)
         self.direction = direction
         self.start_pos = start_pos
+        self.happiness = 100  # Initial happiness (0-100 scale)
+        self.state = "happy"
 
     def step(self):
+        if self.happiness > 80:
+            self.state = "happy"
+        elif self.happiness < 50:
+            self.state = "angry"
+
+        # Behavior based on state
+        if self.state == "happy":
+            self.happiness += 0.2  # Gain happiness slightly
+        elif self.state == "angry":
+            self.happiness -= 0.5  # Lose happiness more rapidly
+
         # Determine the position one cell before the traffic light
         if self.direction == "horizontal":
             stop_pos = (self.model.traffic_light_positions[0][0] - 1, self.start_pos[1])
@@ -27,21 +41,24 @@ class CarAgent(Agent):
         # Stop at red light
         light_green = self.model.is_light_green(self.direction)
         if self.pos == stop_pos and not light_green:
+            self.happiness -= 1 if self.state == "happy" else 2
+            
             return  # Stop if the light is red for this direction
+        
 
         # Move towards the opposite edge and reappear if at the edge
         self.move_and_wrap()
+        self.happiness += 0.1
 
     def move_and_wrap(self):
         x, y = self.pos
-        step_size = 1
+        step_size = 1 if self.state == "happy" else 2  # Angry drivers move faster
         if self.direction == "horizontal":
             next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
             next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
-
         # Move to the next position
         self.model.grid.move_agent(self, next_pos)
 
@@ -51,9 +68,11 @@ class EmergencyVehicleAgent(Agent):
         super().__init__(unique_id, model)
         self.direction = direction
         self.start_pos = start_pos
+        self.happiness = 100
 
     def step(self):
         self.move_and_wrap()
+        self.happiness += 0.5
 
     def move_and_wrap(self):
         x, y = self.pos
@@ -76,15 +95,18 @@ class BusAgent(Agent):
         self.start_pos = start_pos
         self.bus_stops = bus_stops  # List of positions where the bus will stop
         self.stop_counter = 0  # Counts steps to simulate a full stop for dropping off/picking up
+        self.happiness = 100
 
     def step(self):
         if self.pos in self.bus_stops:
             # Stop at bus stops for several steps to simulate a full stop for passengers
             if self.stop_counter < 5:
                 self.stop_counter += 1
+                self.happiness += 1
                 return
             else:
                 self.stop_counter = 0  # Reset counter after the stop
+                self.happiness -= 2
 
         # Move towards the opposite edge and reappear if at the edge
         self.move_and_wrap()
@@ -108,6 +130,7 @@ class AggressiveDriverAgent(Agent):
         super().__init__(unique_id, model)
         self.direction = direction
         self.start_pos = start_pos
+        self.happiness = 100
 
     def step(self):
         # Determine the position one cell before the traffic light
@@ -119,10 +142,13 @@ class AggressiveDriverAgent(Agent):
         # Tends to ignore yellow lights or proceed just as the light turns red
         light_green = self.model.is_light_green(self.direction)
         if self.pos == stop_pos and not light_green and random.random() < 0.8:
+            self.happiness +=1
             return  # 80% chance to ignore yellow or proceed quickly
+
 
         # Move towards the opposite edge and reappear if at the edge
         self.move_and_wrap()
+        self.happiness -= 0.5
 
     def move_and_wrap(self):
         x, y = self.pos
@@ -159,6 +185,10 @@ class TrafficModel(Model):
         self.running = True
         self.light_interval = light_interval
         self.step_count = 0
+
+        self.datacollector = DataCollector(
+            agent_reporters={"Happiness": lambda a: a.happiness if hasattr(a, "happiness") else None}
+        )
 
         # Define traffic light positions
         self.traffic_light_positions = [
@@ -232,6 +262,8 @@ class TrafficModel(Model):
 
         self.step_count += 1
         self.schedule.step()
+        # Collect data at each step
+        self.datacollector.collect(self)
 
 
 
@@ -242,26 +274,37 @@ def agent_portrayal(agent):
         portrayal["Color"] = "yellow"
         portrayal["Layer"] = 0
     elif isinstance(agent, CarAgent):
-        portrayal["Color"] = "blue"
+        if agent.state == "happy":
+            portrayal["Color"] = "blue"
+        elif agent.state == "angry":
+            portrayal["Color"] = "red"
         portrayal["Shape"] = "circle"
         portrayal["r"] = 0.5
         portrayal["Layer"] = 1
+        portrayal["text"] = f"{int(agent.happiness)}"
+        portrayal["text_color"] = "white"
     elif isinstance(agent, EmergencyVehicleAgent):
         portrayal["Color"] = "red"
         portrayal["Shape"] = "circle"
         portrayal["r"] = 0.7
         portrayal["Layer"] = 2
+        portrayal["text"] = f"{int(agent.happiness)}"
+        portrayal["text_color"] = "white"
     elif isinstance(agent, BusAgent):
         portrayal["Color"] = "orange"
         portrayal["Shape"] = "rect"
         portrayal["w"] = 1
         portrayal["h"] = 2
         portrayal["Layer"] = 1
+        portrayal["text"] = f"{int(agent.happiness)}"
+        portrayal["text_color"] = "white"
     elif isinstance(agent, AggressiveDriverAgent):
         portrayal["Color"] = "darkred"
         portrayal["Shape"] = "circle"
         portrayal["r"] = 0.5
         portrayal["Layer"] = 2
+        portrayal["text"] = f"{int(agent.happiness)}"
+        portrayal["text_color"] = "white"
     elif isinstance(agent, TrafficLightAgent):
         portrayal["Color"] = "green" if agent.state == "green" else "red"
         portrayal["Shape"] = "circle"
@@ -277,4 +320,5 @@ server = ModularServer(TrafficModel, [grid], "Traffic Simulation with Various Ve
 server.port = 8521
 
 if __name__ == "__main__":
+
     server.launch()
