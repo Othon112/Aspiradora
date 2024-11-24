@@ -3,10 +3,9 @@ from mesa.time import SimultaneousActivation
 from mesa.space import MultiGrid
 from mesa.visualization.modules import CanvasGrid
 from mesa.visualization.ModularVisualization import ModularServer
-from mesa.datacollection import DataCollector
 import random
 
-# Boundary agent class for visualizing grid boundaries
+# Boundary agent class for visualizing grid boundaries and map elements
 class BoundaryAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(unique_id, model)
@@ -32,33 +31,34 @@ class CarAgent(Agent):
         elif self.state == "angry":
             self.happiness -= 0.5  # Lose happiness more rapidly
 
-        # Determine the position one cell before the traffic light
-        if self.direction == "horizontal":
-            stop_pos = (self.model.traffic_light_positions[0][0] - 1, self.start_pos[1])
-        else:
-            stop_pos = (self.start_pos[0], self.model.traffic_light_positions[2][1] - 1)
-
         # Stop at red light
         light_green = self.model.is_light_green(self.direction)
-        if self.pos == stop_pos and not light_green:
+        if self.at_traffic_light() and not light_green:
             self.happiness -= 1 if self.state == "happy" else 2
-            
             return  # Stop if the light is red for this direction
-        
 
-        # Move towards the opposite edge and reappear if at the edge
+        # Move and wrap
         self.move_and_wrap()
         self.happiness += 0.1
+
+    def at_traffic_light(self):
+        return self.pos in self.model.traffic_light_positions
 
     def move_and_wrap(self):
         x, y = self.pos
         step_size = 1 if self.state == "happy" else 2  # Angry drivers move faster
         if self.direction == "horizontal":
-            next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
+            next_x = (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
-            next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
+            next_y = (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
+        # Check if next position is not a boundary
+        if not self.model.grid.is_cell_empty(next_pos):
+            contents = self.model.grid.get_cell_list_contents([next_pos])
+            for obj in contents:
+                if isinstance(obj, BoundaryAgent):
+                    return  # Can't move into boundaries
         # Move to the next position
         self.model.grid.move_agent(self, next_pos)
 
@@ -78,13 +78,12 @@ class EmergencyVehicleAgent(Agent):
         x, y = self.pos
         step_size = 2  # Higher speed for emergency vehicles
         if self.direction == "horizontal":
-            next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
+            next_x = (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
-            next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
+            next_y = (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
-
-        # Move regardless of traffic lights
+        # Emergency vehicles ignore boundaries
         self.model.grid.move_agent(self, next_pos)
 
 # Public Transport (Bus) agent
@@ -115,12 +114,17 @@ class BusAgent(Agent):
         x, y = self.pos
         step_size = 1
         if self.direction == "horizontal":
-            next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
+            next_x = (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
-            next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
+            next_y = (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
-
+        # Check for boundaries
+        if not self.model.grid.is_cell_empty(next_pos):
+            contents = self.model.grid.get_cell_list_contents([next_pos])
+            for obj in contents:
+                if isinstance(obj, BoundaryAgent):
+                    return  # Can't move into boundaries
         # Move to the next position
         self.model.grid.move_agent(self, next_pos)
 
@@ -133,33 +137,33 @@ class AggressiveDriverAgent(Agent):
         self.happiness = 100
 
     def step(self):
-        # Determine the position one cell before the traffic light
-        if self.direction == "horizontal":
-            stop_pos = (self.model.traffic_light_positions[0][0] - 1, self.start_pos[1])
-        else:
-            stop_pos = (self.start_pos[0], self.model.traffic_light_positions[2][1] - 1)
-
-        # Tends to ignore yellow lights or proceed just as the light turns red
-        light_green = self.model.is_light_green(self.direction)
-        if self.pos == stop_pos and not light_green and random.random() < 0.8:
-            self.happiness +=1
-            return  # 80% chance to ignore yellow or proceed quickly
-
+        # Tends to ignore red lights
+        if self.at_traffic_light() and random.random() < 0.8:
+            self.happiness += 1
+            return  # 80% chance to ignore the red light
 
         # Move towards the opposite edge and reappear if at the edge
         self.move_and_wrap()
         self.happiness -= 0.5
 
+    def at_traffic_light(self):
+        return self.pos in self.model.traffic_light_positions
+
     def move_and_wrap(self):
         x, y = self.pos
-        step_size = 1
+        step_size = 2  # Aggressive drivers move faster
         if self.direction == "horizontal":
-            next_x = x + step_size if x + step_size < self.model.grid.width else (x + step_size) % self.model.grid.width
+            next_x = (x + step_size) % self.model.grid.width
             next_pos = (next_x, y)
         else:
-            next_y = y + step_size if y + step_size < self.model.grid.height else (y + step_size) % self.model.grid.height
+            next_y = (y + step_size) % self.model.grid.height
             next_pos = (x, next_y)
-
+        # Check for boundaries
+        if not self.model.grid.is_cell_empty(next_pos):
+            contents = self.model.grid.get_cell_list_contents([next_pos])
+            for obj in contents:
+                if isinstance(obj, BoundaryAgent):
+                    return  # Can't move into boundaries
         # Move to the next position
         self.model.grid.move_agent(self, next_pos)
 
@@ -177,68 +181,175 @@ class TrafficLightAgent(Agent):
     def turn_red(self):
         self.state = "red"
 
+    def step(self):
+        pass  # Traffic lights are controlled by the model's step
+
 # Main traffic model
 class TrafficModel(Model):
     def __init__(self, M, N, light_interval):
-        self.grid = MultiGrid(M, N, True)
+        self.grid = MultiGrid(M, N, torus=False)  # Set torus to False to prevent wrapping
         self.schedule = SimultaneousActivation(self)
         self.running = True
         self.light_interval = light_interval
         self.step_count = 0
 
-        self.datacollector = DataCollector(
-            agent_reporters={"Happiness": lambda a: a.happiness if hasattr(a, "happiness") else None}
-        )
-
-        # Define traffic light positions
+        # Define traffic light positions (according to the image)
         self.traffic_light_positions = [
-            (M // 2 - 1, N // 2),
-            (M // 2 + 1, N // 2),
-            (M // 2, N // 2 - 1),
-            (M // 2, N // 2 + 1),
+            (5, 0), (5, 1), #horizontal
+            (6, 2), (7, 2), #vertical
+
+            (0, 6), (1,6), #vertical
+            (2, 4), (2,5), #horizontal
+
+            (18, 7), (19,7), #vertical
+            (17, 8), (17, 9), #horizontal
+
+            (6, 16), (7, 16), #horizontal
+            (8, 17), (8, 18), #vertical
+
+            (6, 21), (7, 21), #vertical
+            (8, 22), (8, 23), #horizontal
+
         ]
         self.traffic_lights = {}
 
         # Create traffic lights
         for i, pos in enumerate(self.traffic_light_positions):
-            orientation = "horizontal" if i < 2 else "vertical"
+            # Define the orientation based on specific positions
+            if pos in [(5, 0), (5, 1), (2, 4), (2, 5), (8, 22), (8, 23), (17, 8), (17, 9), (8, 17), (8, 18)]:
+                orientation = "horizontal"
+            elif pos in [(6, 2), (7, 2), (0, 6), (1, 6), (18, 7), (19, 7), (6, 21), (7, 21), (8, 17), (8, 18), (6, 16), (7, 16)]:
+                orientation = "vertical"
+            else:
+                raise ValueError(f"Position {pos} does not have a defined orientation.")
+            
+            # Create and add the traffic light agent
             light = TrafficLightAgent(f"light_{i}", self, pos, orientation)
             self.traffic_lights[pos] = light
             self.grid.place_agent(light, pos)
             self.schedule.add(light)
 
-        # Add boundary agents to fill the grid with yellow rectangles
-        for x in range(M):
-            for y in range(N):
-                if (y in range(N // 2 - 2, N // 2 + 3) or x in range(M // 2 - 2, M // 2 + 3)) and (x, y) not in self.traffic_light_positions:
-                    continue
-                boundary = BoundaryAgent(f"boundary_{x}_{y}", self)
-                self.grid.place_agent(boundary, (x, y))
+        # Add boundary agents for buildings, parking lots, medians, and roundabout
 
-        # Add a regular car
-        car_start_pos = (0, N // 2 - 1)
-        car = CarAgent("car", self, car_start_pos, "horizontal")
-        self.grid.place_agent(car, car_start_pos)
-        self.schedule.add(car)
+        # Buildings (blue areas)
+        building_positions = [
+            [(x, y) for x in range(2, 6) for y in range(2, 3)],
+            [(x, y) for x in range(2, 4) for y in range(3, 4)],
+            [(x, y) for x in range(5, 6) for y in range(3, 4)],
 
-        # Add an emergency vehicle
-        emergency_start_pos = (0, N // 2)
-        emergency_vehicle = EmergencyVehicleAgent("emergency_vehicle", self, emergency_start_pos, "horizontal")
-        self.grid.place_agent(emergency_vehicle, emergency_start_pos)
-        self.schedule.add(emergency_vehicle)
+            [(x, y) for x in range(2, 3) for y in range(6, 8)],
+            [(x, y) for x in range(3, 6) for y in range(7, 8)],
+            [(x, y) for x in range(4, 6) for y in range(6, 7)],
 
-        # Add a public transport bus with bus stops
-        bus_start_pos = (M // 2, 0)
-        bus_stops = [(M // 2, N // 4), (M // 2, 3 * N // 4)]
-        bus = BusAgent("bus", self, bus_start_pos, "vertical", bus_stops)
-        self.grid.place_agent(bus, bus_start_pos)
-        self.schedule.add(bus)
+            [(x, y) for x in range(8, 9) for y in range(2, 4)],
+            [(x, y) for x in range(9, 12) for y in range(3, 4)],
+            [(x, y) for x in range(10, 12) for y in range(2, 3)],
 
-        # Add an aggressive driver
-        aggressive_start_pos = (0, N // 2 + 1)
-        aggressive_driver = AggressiveDriverAgent("aggressive_driver", self, aggressive_start_pos, "horizontal")
-        self.grid.place_agent(aggressive_driver, aggressive_start_pos)
-        self.schedule.add(aggressive_driver)
+            [(x, y) for x in range(8, 12) for y in range(6, 7)],
+            [(x, y) for x in range(8, 10) for y in range(7, 8)],
+            [(x, y) for x in range(11, 12) for y in range(7, 8)],
+
+            [(x, y) for x in range(16, 18) for y in range(2, 4)],
+            [(x, y) for x in range(16, 17) for y in range(4, 8)],
+            [(x, y) for x in range(17, 18) for y in range(5, 6)],
+            [(x, y) for x in range(17, 18) for y in range(7, 8)],
+
+            [(x, y) for x in range(20, 22) for y in range(2, 4)],
+            [(x, y) for x in range(21, 22) for y in range(4, 5)],
+            [(x, y) for x in range(20, 22) for y in range(5, 8)],
+
+            [(x, y) for x in range(2, 4) for y in range(12, 14)],
+            [(x, y) for x in range(5, 6) for y in range(12, 13)],
+            [(x, y) for x in range(4,6) for y in range(13, 17)],
+            [(x, y) for x in range(2,4) for y in range(15, 21)],
+            [(x, y) for x in range(2,3 ) for y in range(21,22)],
+            [(x, y) for x in range(4,6 ) for y in range(18, 22)],
+            [(x, y) for x in range(3, 4) for y in range(14, 15)],
+            [(x, y) for x in range(4,5 ) for y in range(17,18 )],
+
+            [(x, y) for x in range(8, 10) for y in range(12, 15)],
+            [(x, y) for x in range(10, 12) for y in range(13, 17)],
+            [(x, y) for x in range(11, 12) for y in range(12, 13)],
+            [(x, y) for x in range(9, 10) for y in range(15, 17)],
+            [(x, y) for x in range(8, 9) for y in range(16, 17)],
+
+            [(x, y) for x in range(8, 10) for y in range(19, 22)],
+            [(x, y) for x in range(10, 12) for y in range(20, 22)],
+            [(x, y) for x in range(11, 12) for y in range(19, 20)],
+
+            [(x, y) for x in range(16, 20) for y in range(18, 21)],
+            [(x, y) for x in range(16,17 ) for y in range(21, 22)],
+            [(x, y) for x in range(18, 22) for y in range(21, 22)],
+            [(x, y) for x in range(21, 22 ) for y in range(18, 21)],
+            [(x, y) for x in range(20, 21 ) for y in range(19, 21)],
+
+            [(x, y) for x in range(16, 20 ) for y in range(12, 16)],
+            [(x, y) for x in range(21, 22) for y in range(12, 16 )],
+            [(x, y) for x in range(20, 21 ) for y in range(12, 15)],
+        ]
+        for idx, positions in enumerate(building_positions):
+            for pos in positions:
+                boundary = BoundaryAgent(f"building_{idx}_{pos[0]}_{pos[1]}", self)
+                self.grid.place_agent(boundary, pos)
+
+        # Parking lots (yellow areas)
+        parking_lots = [
+            (2,14), (3,21), (3, 6), (4,12), (4,3), (5,17), (8, 15), (9,2), (10, 19), (10,12),  (10,7), (17, 21), (17,6), (17, 4), (20,18), (20,15), (20,4)
+        ]
+        for idx, lot in enumerate(parking_lots):
+            boundary = BoundaryAgent(f"parking_{idx}_{lot[0]}_{lot[1]}", self)
+            self.grid.place_agent(boundary, lot)
+
+        # Roundabout (brown area at center)
+        roundabout_positions = [
+            (14, 10), (13,10),
+            (14,9), (13,9),
+        ]
+        for idx, pos in enumerate(roundabout_positions):
+            boundary = BoundaryAgent(f"roundabout_{idx}_{pos[0]}_{pos[1]}", self)
+            self.grid.place_agent(boundary, pos)
+
+        # Add multiple regular cars
+        car_start_positions = [
+            (0, 1)  # Left to right and right to left
+              # Top to bottom and bottom to top
+        ]
+        for i, start_pos in enumerate(car_start_positions):
+            direction = "horizontal" if start_pos[1] in [11, 12] else "vertical"
+            car = CarAgent(f"car_{i}", self, start_pos, direction)
+            self.grid.place_agent(car, start_pos)
+            self.schedule.add(car)
+
+        # Add emergency vehicles
+        emergency_start_positions = [
+            
+        ]
+        for i, start_pos in enumerate(emergency_start_positions):
+            direction = "horizontal" if start_pos[1] in [10, 13] else "vertical"
+            emergency_vehicle = EmergencyVehicleAgent(f"emergency_vehicle_{i}", self, start_pos, direction)
+            self.grid.place_agent(emergency_vehicle, start_pos)
+            self.schedule.add(emergency_vehicle)
+
+        # Add public buses
+        bus_stops = [(9, 5), (14, 5), (9, 18), (14, 18)]
+        bus_start_positions = [
+           
+        ]
+        for i, start_pos in enumerate(bus_start_positions):
+            direction = "vertical"
+            bus = BusAgent(f"bus_{i}", self, start_pos, direction, bus_stops)
+            self.grid.place_agent(bus, start_pos)
+            self.schedule.add(bus)
+
+        # Add aggressive drivers
+        aggressive_start_positions = [
+            
+        ]
+        for i, start_pos in enumerate(aggressive_start_positions):
+            direction = "horizontal" if start_pos[1] in [11, 12] else "vertical"
+            aggressive_driver = AggressiveDriverAgent(f"aggressive_driver_{i}", self, start_pos, direction)
+            self.grid.place_agent(aggressive_driver, start_pos)
+            self.schedule.add(aggressive_driver)
 
     def is_light_green(self, direction):
         for light in self.traffic_lights.values():
@@ -247,6 +358,7 @@ class TrafficModel(Model):
         return False
 
     def step(self):
+        # Control traffic lights
         if self.step_count % (2 * self.light_interval) < self.light_interval:
             for pos, light in self.traffic_lights.items():
                 if light.orientation == "horizontal":
@@ -262,63 +374,116 @@ class TrafficModel(Model):
 
         self.step_count += 1
         self.schedule.step()
-        # Collect data at each step
-        self.datacollector.collect(self)
-
-
 
 # Visualization function
 def agent_portrayal(agent):
-    portrayal = {"Shape": "rect", "Filled": "true", "w": 1, "h": 1}
+    portrayal = {}
     if isinstance(agent, BoundaryAgent):
-        portrayal["Color"] = "yellow"
-        portrayal["Layer"] = 0
+        if "building" in agent.unique_id:
+            portrayal = {
+                "Shape": "rect",
+                "Filled": "true",
+                "Layer": 0,
+                "Color": "blue",  
+                "w": 1,
+                "h": 1,
+            }
+        elif "roundabout" in agent.unique_id:
+            portrayal = {
+                "Shape": "rect",
+                "Filled": "true",
+                "Layer": 0,
+                "Color": "brown",  
+                "w": 1,
+                "h": 1,
+            }
+        elif "parking" in agent.unique_id:
+            portrayal = {
+                "Shape": "rect",
+                "Filled": "true",
+                "Layer": 0,
+                "Color": "yellow",  
+                "w": 1,
+                "h": 1,
+            }
+
+        else:
+            portrayal = {
+                "Shape": "rect",
+                "Filled": "true",
+                "Layer": 0,
+                "Color": "gray",  # Color for other boundaries
+                "w": 1,
+                "h": 1,
+            }
     elif isinstance(agent, CarAgent):
-        if agent.state == "happy":
-            portrayal["Color"] = "blue"
-        elif agent.state == "angry":
-            portrayal["Color"] = "red"
-        portrayal["Shape"] = "circle"
-        portrayal["r"] = 0.5
-        portrayal["Layer"] = 1
-        portrayal["text"] = f"{int(agent.happiness)}"
-        portrayal["text_color"] = "white"
+        portrayal = {
+            "Shape": "circle",
+            "Filled": "true",
+            "Layer": 1,
+            "Color": "blue" if agent.state == "happy" else "red",
+            "r": 0.5,
+            "text": f"{int(agent.happiness)}",
+            "text_color": "white",
+        }
     elif isinstance(agent, EmergencyVehicleAgent):
-        portrayal["Color"] = "red"
-        portrayal["Shape"] = "circle"
-        portrayal["r"] = 0.7
-        portrayal["Layer"] = 2
-        portrayal["text"] = f"{int(agent.happiness)}"
-        portrayal["text_color"] = "white"
+        portrayal = {
+            "Shape": "circle",
+            "Filled": "true",
+            "Layer": 2,
+            "Color": "red",
+            "r": 0.7,
+            "text": f"{int(agent.happiness)}",
+            "text_color": "white",
+        }
     elif isinstance(agent, BusAgent):
-        portrayal["Color"] = "orange"
-        portrayal["Shape"] = "rect"
-        portrayal["w"] = 1
-        portrayal["h"] = 2
-        portrayal["Layer"] = 1
-        portrayal["text"] = f"{int(agent.happiness)}"
-        portrayal["text_color"] = "white"
+        portrayal = {
+            "Shape": "rect",
+            "Filled": "true",
+            "Layer": 1,
+            "Color": "orange",
+            "w": 1,
+            "h": 1,
+            "text": f"{int(agent.happiness)}",
+            "text_color": "white",
+        }
     elif isinstance(agent, AggressiveDriverAgent):
-        portrayal["Color"] = "darkred"
-        portrayal["Shape"] = "circle"
-        portrayal["r"] = 0.5
-        portrayal["Layer"] = 2
-        portrayal["text"] = f"{int(agent.happiness)}"
-        portrayal["text_color"] = "white"
+        portrayal = {
+            "Shape": "circle",
+            "Filled": "true",
+            "Layer": 2,
+            "Color": "darkred",
+            "r": 0.5,
+            "text": f"{int(agent.happiness)}",
+            "text_color": "white",
+        }
     elif isinstance(agent, TrafficLightAgent):
-        portrayal["Color"] = "green" if agent.state == "green" else "red"
-        portrayal["Shape"] = "circle"
-        portrayal["r"] = 0.5
-        portrayal["Layer"] = 1
+        portrayal = {
+            "Shape": "circle",
+            "Filled": "true",
+            "Layer": 1,
+            "Color": "green" if agent.state == "green" else "red",
+            "r": 0.5,
+        }
     return portrayal
 
 # Simulation parameters
-M, N = 15, 15
+M, N = 24, 24
 light_interval = 10
+
 grid = CanvasGrid(agent_portrayal, M, N, 600, 600)
-server = ModularServer(TrafficModel, [grid], "Traffic Simulation with Various Vehicles", {"M": M, "N": N, "light_interval": light_interval})
+server = ModularServer(
+    TrafficModel,
+    [grid],
+    "Traffic Simulation with Various Vehicles",
+    {
+        "M": M,
+        "N": N,
+        "light_interval": light_interval,
+    },
+)
+
 server.port = 8521
 
 if __name__ == "__main__":
-
     server.launch()
