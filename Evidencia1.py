@@ -4,9 +4,9 @@ from mesa.space import MultiGrid
 from mesa.visualization.modules import CanvasGrid
 from mesa.visualization.ModularVisualization import ModularServer
 import random
-import networkx as nx  # Asegúrate de tener networkx instalado
+import networkx as nx  
 
-# Boundary agent class for visualizing grid boundaries and map elements
+
 class BoundaryAgent(Agent):
     def __init__(self, unique_id, model):
         super().__init__(unique_id, model)
@@ -15,18 +15,18 @@ class BoundaryAgent(Agent):
 class BusAgent(Agent):
     def __init__(self, unique_id, model, route, bus_stops):
         super().__init__(unique_id, model)
-        self.route = route  # Lista de posiciones que el autobús seguirá inicialmente
-        self.bus_stops = bus_stops  # Lista de destinos cíclicos
-        self.current_stop_index = 0  # Índice del destino actual
-        self.stop_counter = 0  # Contador para simular paradas
-        self.happiness = 100  # Escala de felicidad del autobús
+        self.route = route  
+        self.bus_stops = bus_stops  
+        self.current_stop_index = 0  
+        self.stop_counter = 0  
+        self.happiness = 100 
 
     def step(self):
-        # Detenerse en la parada actual
+       
         if self.pos == self.bus_stops[self.current_stop_index]:
-            if self.stop_counter < 5:  # Simular una parada por varios pasos
+            if self.stop_counter < 5: 
                 self.stop_counter += 1
-                self.happiness += 1  # Ganar felicidad por detenerse en la parada
+                self.happiness += 1  
                 return
             else:
                 self.stop_counter = 0  # Reiniciar el contador después de detenerse
@@ -67,11 +67,9 @@ class BusAgent(Agent):
             self.update_route()
 
     def at_traffic_light(self):
-        """Verificar si el autobús está en un semáforo."""
         return self.pos in self.model.traffic_light_positions
 
     def direction_to_next(self):
-        """Determinar la dirección hacia la siguiente posición en la ruta."""
         if len(self.route) > 1:
             next_pos = self.route[1]
             dx = next_pos[0] - self.pos[0]
@@ -83,7 +81,6 @@ class BusAgent(Agent):
         return None
 
     def can_move(self, next_pos):
-        """Verificar si el autobús puede moverse a la siguiente posición."""
         if not self.model.grid.is_cell_empty(next_pos):
             contents = self.model.grid.get_cell_list_contents([next_pos])
             for obj in contents:
@@ -121,7 +118,6 @@ class AggressiveDriverAgent(Agent):
         return self.pos in self.model.traffic_light_positions
 
     def direction_to_next(self):
-        """Determinar la dirección hacia la siguiente posición en la ruta."""
         if len(self.route) > 1:
             next_pos = self.route[self.current_step + 1]
             dx = next_pos[0] - self.pos[0]
@@ -133,22 +129,20 @@ class AggressiveDriverAgent(Agent):
         return None
 
     def move_aggressively(self):
-        """Moverse dos pasos a lo largo de la ruta."""
-        steps_to_take = 2  # Conductor agresivo avanza dos posiciones
+        steps_to_take = 2
         for _ in range(steps_to_take):
             if self.current_step < len(self.route) - 1:
                 next_pos = self.route[self.current_step + 1]
                 if self.can_move(next_pos):
                     self.model.grid.move_agent(self, next_pos)
                     self.current_step += 1
-                    self.happiness -= 0.5  # Perder felicidad por cada movimiento
+                    self.happiness -= 0.5  
                 else:
                     break  # Detenerse si no puede moverse al siguiente nodo
             else:
                 break  # Ruta completada
 
     def can_move(self, next_pos):
-        """Verificar si el conductor puede moverse a la siguiente posición."""
         if not self.model.grid.is_cell_empty(next_pos):
             contents = self.model.grid.get_cell_list_contents([next_pos])
             for obj in contents:
@@ -163,7 +157,6 @@ class AggressiveDriverAgent(Agent):
 
 
 
-# Car agent class
 class CarAgent(Agent):
     def __init__(self, unique_id, model, route):
         super().__init__(unique_id, model)
@@ -280,13 +273,18 @@ class EmergencyVehicleAgent(Agent):
                 if isinstance(obj, CarAgent) or isinstance(obj, AggressiveDriverAgent) or isinstance(obj, BusAgent):
                     return False  # No moverse a celdas ocupadas por carros, autobuses u otros conductores
         return True
+    
+
 # Traffic light agent class
 class TrafficLightAgent(Agent):
-    def __init__(self, unique_id, model, pos, orientation):
+    def __init__(self, unique_id, model, pos, orientation, smart=False):
         super().__init__(unique_id, model)
         self.pos = pos
         self.state = "red"
         self.orientation = orientation
+        self.smart = smart  # Indica si el semáforo es inteligente
+        self.light_interval = model.light_interval
+        self.step_count = 0
 
     def turn_green(self):
         self.state = "green"
@@ -295,7 +293,28 @@ class TrafficLightAgent(Agent):
         self.state = "red"
 
     def step(self):
-        pass  # Traffic lights are controlled by the model's step
+        self.step_count += 1
+        if self.smart:
+            emergency_nearby = False
+            for emergency_vehicle in self.model.emergency_vehicles:
+                dist = abs(emergency_vehicle.pos[0] - self.pos[0]) + abs(emergency_vehicle.pos[1] - self.pos[1])
+                if dist <= 3:  # Si la ambulancia está a 3 celdas o menos
+                    emergency_nearby = True
+                    break
+            if emergency_nearby:
+                self.turn_green()
+                return
+        # Comportamiento normal del semáforo
+        if self.step_count % (2 * self.light_interval) < self.light_interval:
+            if self.orientation == "horizontal":
+                self.turn_green()
+            else:
+                self.turn_red()
+        else:
+            if self.orientation == "vertical":
+                self.turn_green()
+            else:
+                self.turn_red()
 
 # Main traffic model
 class TrafficModel(Model):
@@ -443,7 +462,9 @@ class TrafficModel(Model):
                 orientation = "horizontal"  # Orientación por defecto
 
             
-            light = TrafficLightAgent(f"light_{i}", self, pos, orientation)
+            smart = pos in [(18, 7), (19, 7), (17, 8), (17, 9)]
+
+            light = TrafficLightAgent(f"light_{i}", self, pos, orientation, smart=smart)
             self.traffic_lights[pos] = light
             self.grid.place_agent(light, pos)
             self.schedule.add(light)
@@ -584,8 +605,8 @@ class TrafficModel(Model):
                 except nx.NetworkXNoPath:
                     print(f"No hay camino entre {start_pos} y {destino}")
 
-        
-        emergency_start_positions = [(10,11)]
+        self.emergency_vehicles = []
+        emergency_start_positions = [(10,11), (18,6)]
         for i, start_pos in enumerate(emergency_start_positions):
             # Seleccionar un destino aleatorio de los estacionamientos
             destino = random.choice(parking_lots)
@@ -598,10 +619,23 @@ class TrafficModel(Model):
                     car = EmergencyVehicleAgent(f"emergency_{i}", self, route)
                     self.grid.place_agent(car, start_pos)
                     self.schedule.add(car)
+                    self.emergency_vehicles.append(car)
                 except nx.NetworkXNoPath:
                     print(f"No hay camino entre {start_pos} y {destino}")
 
-        
+    def get_positions(self):
+        """
+        Devuelve una lista combinada de las posiciones de todos los agentes en el modelo,
+        excluyendo los semáforos (TrafficLightAgent).
+        El formato es una lista de diccionarios con claves 'x' y 'z'.
+        """
+        points = []
+        for agent in self.schedule.agents:
+            # Excluir TrafficLightAgent
+            if not isinstance(agent, TrafficLightAgent):
+                points.append({"x": agent.pos[0], "z": agent.pos[1]})
+        return {"points": points}
+    
     def create_graph_edges(self, M, N):
         for x in range(M):
             for y in range(N):
@@ -675,6 +709,7 @@ class TrafficModel(Model):
                         if right_turn_pos and self.graph.has_edge(node, right_turn_pos):
                             self.graph.remove_edge(node, right_turn_pos)
 
+
     def get_left_turn_node(self, node, from_direction):
         x, y = node
         if from_direction == "north":
@@ -719,20 +754,6 @@ class TrafficModel(Model):
         return True  # No traffic light at this position
 
     def step(self):
-        # Controlar semáforos
-        if self.step_count % (2 * self.light_interval) < self.light_interval:
-            for pos, light in self.traffic_lights.items():
-                if light.orientation == "horizontal":
-                    light.turn_green()
-                else:
-                    light.turn_red()
-        else:
-            for pos, light in self.traffic_lights.items():
-                if light.orientation == "vertical":
-                    light.turn_green()
-                else:
-                    light.turn_red()
-
         self.step_count += 1
         self.schedule.step()
 
@@ -845,7 +866,7 @@ server = ModularServer(
     },
 )
 
-server.port = 8522
+server.port = 8523
 
 if __name__ == "__main__":
     server.launch()
